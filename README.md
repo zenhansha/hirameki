@@ -38,6 +38,10 @@ Vital 風のウェーブテーブル・シンセと、コード進行用シー�
 | PC でローカルに | `start_hirameki.bat` をダブルクリック → `http://localhost:8790/`（`dist/` がない時は先に `build.bat`） |
 | 更新を公開する | `git push` するだけ。GitHub Actions がテスト → ビルド → GitHub Pages に公開（`.github/workflows/pages.yml`） |
 | ほかの場所に置く | `dist/` フォルダの中身をそのままアップロード（https 必須） |
+| claude.ai の中で使う | Artifact 版：https://claude.ai/artifact/1wnYWY3vfQ92w4aV7fGNzi （最初は自分だけが開ける。人に見せる時はページの共有メニューから） |
+| Artifact 版を作り直す | `npm run build:artifact` → `artifact/index.html` と `artifact/assets/*.js` を Artifact として公開 |
+
+**Artifact 版の違い**：メモは claude.ai アカウントの自分専用の保存領域（他の人には見えない）に入るので、ブラウザを変えても残る。WAV / MIDI は claude.ai が保存を許していない形式なので **ZIP に入れて**保存する（開くと中に .wav / .mid）。マイク（鼻歌入力）と MIDI 機器は claude.ai の中では使えないので、その時は Web 版へのボタンが出る。「URLで共有」のリンクは Web 版を開くリンクになる。
 | ソースを直して試す | `dev.bat`（開発サーバー `http://localhost:5173/`） |
 | 作り直す | `build.bat`（`dist/` を更新） |
 | テスト一式 | `test.bat`（ユニット → ビルド → E2E） |
