@@ -10,6 +10,7 @@ import { midiSupported, midiInputs, midiStatus, enableMidi, disableMidi, midiLea
 import { COMMANDS, COMMAND_MAP, keysFor, setKeyLearn } from '../commands';
 import { Btn, Card, Seg, Slider, Toggle } from './common';
 import { openTemplates } from './TemplateGallery';
+import { IS_ARTIFACT } from '../../platform';
 import { flushSave, persisted } from '../state';
 
 function Tags() {
@@ -51,6 +52,7 @@ function ExportCard() {
         <Btn icon="download" onClick={() => exportMidi(m, withPat, m.loop.on ? loops : 0, side.value)}>MIDI</Btn>
         <Toggle small value={withPat} onChange={setWithPat} label="MIDIにパターンを反映（オフ＝コードを伸ばしたまま）" />
       </div>
+      {IS_ARTIFACT && <div class="hint">claude.ai の中では WAV と MIDI は ZIP に入れて保存されるよ（開くと中にファイルが入ってる）</div>}
     </Card>
   );
 }

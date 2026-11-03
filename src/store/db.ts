@@ -1,13 +1,16 @@
 // Tiny storage layer: IndexedDB when available, localStorage as a fallback.
 // Everything goes through `Store` so a cloud sync adapter can be added later without touching the UI.
 
+import { IS_ARTIFACT } from '../platform';
+import { claudeDbBackend } from './claudeDb';
+
 export type StoreName = 'memos' | 'patches' | 'fxpresets' | 'kv';
 const STORES: StoreName[] = ['memos', 'patches', 'fxpresets', 'kv'];
 const DB_NAME = 'hirameki';
 const DB_VERSION = 1;
 
 export interface Backend {
-  kind: 'idb' | 'local' | 'memory';
+  kind: 'idb' | 'local' | 'memory' | 'claude';
   get<T>(store: StoreName, key: string): Promise<T | undefined>;
   put<T>(store: StoreName, key: string, value: T): Promise<void>;
   del(store: StoreName, key: string): Promise<void>;
@@ -78,8 +81,15 @@ function localBackend(): Backend {
 
 let backend: Promise<Backend> | null = null;
 
+const browserBackend = () => openIdb().catch(() => localBackend());
+
 export function getBackend(): Promise<Backend> {
-  if (!backend) backend = openIdb().catch(() => localBackend());
+  if (!backend) {
+    // Artifact build: the viewer's private claude.ai store first, this browser's storage otherwise.
+    backend = IS_ARTIFACT
+      ? claudeDbBackend(browserBackend).then((b) => b ?? browserBackend())
+      : browserBackend();
+  }
   return backend;
 }
 

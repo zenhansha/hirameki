@@ -13,6 +13,7 @@ import { memoFromTemplate } from './ui/actions';
 import { codeFromHash, decodeMemo, ShareDecodeError } from './io/share';
 import { enableMidi, midiSupported, injectMidi } from './io/webmidi';
 import { openMemo } from './ui/actions';
+import { IS_ARTIFACT } from './platform';
 
 async function boot() {
   audio.installUnlock();
@@ -79,7 +80,7 @@ async function boot() {
   window.addEventListener('error', (e) => reportError(e.error ?? e.message));
   window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
 
-  if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  if ('serviceWorker' in navigator && import.meta.env.PROD && !IS_ARTIFACT) {
     navigator.serviceWorker.register('./sw.js').then((reg) => {
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;

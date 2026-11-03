@@ -4,6 +4,7 @@ import { Memo, normalizeMemo } from '../store/schema';
 import { ALL_BUILTIN_PATCHES } from '../presets/synth';
 import type { Patch } from '../audio/params';
 import { newId } from '../seq/timeline';
+import { SHARE_BASE } from '../platform';
 
 const PREFIX = '1.';
 
@@ -74,7 +75,7 @@ export function decodeMemo(code: string): Memo {
   }
 }
 
-export function shareUrl(m: Memo, base = location.origin + location.pathname): string {
+export function shareUrl(m: Memo, base = SHARE_BASE || location.origin + location.pathname): string {
   return `${base}#m=${encodeMemo(m)}`;
 }
 

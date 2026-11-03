@@ -1,13 +1,15 @@
 // Web MIDI input: play the synth, enter chords from a MIDI keyboard, and drive commands via MIDI learn.
 // Hidden automatically when the browser has no Web MIDI (iOS Safari, Firefox without permission…).
 import { signal } from '@preact/signals';
+import { IS_ARTIFACT } from '../platform';
 import { audio } from '../audio/host';
 import { recognizeChord } from '../theory/recognize';
 import { COMMAND_MAP } from '../ui/commands';
 import { inputChord } from '../ui/actions';
 import { memo, midiHeld, settings, toast, updateSettings, pianoNotes, inputMode } from '../ui/state';
 
-export const midiSupported = typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator;
+// The Artifact frame refuses device access, so MIDI is offered only in the web version.
+export const midiSupported = !IS_ARTIFACT && typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator;
 export const midiInputs = signal<string[]>([]);
 export const midiStatus = signal<'off' | 'on' | 'denied' | 'error'>('off');
 export const midiLearn = signal<string | null>(null);

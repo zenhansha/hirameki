@@ -12,6 +12,7 @@ import type { MelodyNote } from '../../store/schema';
 import { inputChord, play, setKey, stop, updateMemo } from '../actions';
 import { commit } from '../state';
 import { Btn } from './common';
+import { IS_ARTIFACT, SHARE_BASE } from '../../platform';
 
 export function Hum() {
   const [on, setOn] = useState(false);
@@ -123,6 +124,16 @@ export function Hum() {
   };
   const estKey = result ? estimateKey(result) : null;
 
+  if (IS_ARTIFACT) {
+    return (
+      <div class="hum">
+        <div class="hum-start">
+          <p>claude.ai の中ではマイクが使えないので、鼻歌入力は Web 版で使ってね。メモは「URLで共有」でそのまま持っていけるよ。</p>
+          <a class="btn primary" href={SHARE_BASE || 'https://zenhansha.github.io/hirameki/'} target="_blank" rel="noopener">Web版を開く</a>
+        </div>
+      </div>
+    );
+  }
   return (
     <div class="hum">
       {!on ? (

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "icons": "node tools/make_icons.mjs"
+    "icons": "node tools/make_icons.mjs",
+    "build:artifact": "tsc --noEmit && vite build --mode artifact --outDir dist-artifact && node tools/artifact.mjs"
   },
   "dependencies": {
     "@preact/signals": "^2.11.4",

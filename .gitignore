@@ -4,3 +4,5 @@ test-results/
 playwright-report/
 .claude/
 *.log
+dist-artifact/
+artifact/
