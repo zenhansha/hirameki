@@ -190,3 +190,87 @@ export function isValidTimeline(items: ChordItem[]): boolean {
   }
   return true;
 }
+
+/**
+ * Merge a contiguous selection into one chord (the first chord's content),
+ * covering everything from the first start to the last end.
+ */
+export function mergeItems(items: ChordItem[], ids: string[]): { items: ChordItem[]; id: string | null } {
+  const sel = sortItems(items.filter((i) => ids.includes(i.id)));
+  if (sel.length < 2) return { items, id: sel[0]?.id ?? null };
+  const first = sel[0];
+  const end = Math.max(...sel.map(itemEnd));
+  const rest = items.filter((i) => !ids.includes(i.id));
+  const merged: ChordItem = { ...first, len: end - first.t };
+  return { items: sortItems([...clearRange(rest, first.t, end), merged]), id: first.id };
+}
+
+/** Merge an item with the chord right after it (absorbs the next one). */
+export function mergeWithNext(items: ChordItem[], id: string): { items: ChordItem[]; id: string | null } {
+  const sorted = sortItems(items);
+  const i = sorted.findIndex((x) => x.id === id);
+  if (i < 0 || i === sorted.length - 1) return { items, id };
+  return mergeItems(items, [id, sorted[i + 1].id]);
+}
+
+/**
+ * Anticipation (食い): start the chord `amount` ticks earlier, taking the time from the chord before it
+ * (or from a gap). Negative amount undoes it (starts later, giving the time back).
+ */
+export function shiftStart(items: ChordItem[], id: string, amount: number): ChordItem[] {
+  const sorted = sortItems(items);
+  const i = sorted.findIndex((x) => x.id === id);
+  if (i < 0 || amount === 0) return items;
+  const it = sorted[i];
+  const prev = sorted[i - 1];
+  const prevEnd = prev ? itemEnd(prev) : 0;
+  if (amount > 0) {
+    const newT = it.t - amount;
+    if (newT < 0) return items;
+    if (prev && prevEnd > newT) {
+      // Take the time from the previous chord (it must keep at least a sliver).
+      if (newT <= prev.t) return items;
+      return sorted.map((x) => (x.id === prev.id ? { ...x, len: newT - prev.t } : x.id === id ? { ...x, t: newT, len: x.len + amount } : x));
+    }
+    return sorted.map((x) => (x.id === id ? { ...x, t: newT, len: x.len + amount } : x));
+  }
+  const back = -amount;
+  if (it.len <= back) return items;
+  const touching = prev && prevEnd === it.t;
+  return sorted.map((x) => {
+    if (touching && x.id === prev.id) return { ...x, len: x.len + back };
+    if (x.id === id) return { ...x, t: x.t + back, len: x.len - back };
+    return x;
+  });
+}
+
+/** Delete items and pull everything after them forward by the deleted span ("削除して詰める"). */
+export function rippleDelete(items: ChordItem[], ids: string[]): ChordItem[] {
+  const sel = sortItems(items.filter((i) => ids.includes(i.id)));
+  if (!sel.length) return items;
+  const start = sel[0].t;
+  const end = Math.max(...sel.map(itemEnd));
+  return deleteTime(items, start, end - start);
+}
+
+/** Copy of a selection with times relative to its start (for the clipboard). */
+export function copyItems(items: ChordItem[], ids: string[]): { items: ChordItem[]; span: number } {
+  const sel = sortItems(items.filter((i) => ids.includes(i.id)));
+  if (!sel.length) return { items: [], span: 0 };
+  const start = sel[0].t;
+  const span = Math.max(...sel.map(itemEnd)) - start;
+  return { items: sel.map((i) => ({ ...i, t: i.t - start })), span };
+}
+
+/** Paste clipboard items at `t` (overwrite, or insert = push later chords back). */
+export function pasteItems(items: ChordItem[], clip: { items: ChordItem[]; span: number }, t: number, insert: boolean): { items: ChordItem[]; ids: string[] } {
+  if (!clip.items.length) return { items, ids: [] };
+  let base = insert ? insertTime(items, t, clip.span) : clearRange(items, t, t + clip.span);
+  const ids: string[] = [];
+  for (const c of clip.items) {
+    const id = newId();
+    ids.push(id);
+    base = [...base, { ...c, id, t: t + c.t }];
+  }
+  return { items: sortItems(base), ids };
+}

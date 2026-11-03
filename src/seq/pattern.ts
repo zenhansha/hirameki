@@ -145,10 +145,29 @@ export function rhythmHits(p: PatternSpec, cs: number, ce: number, ts: TimeSig):
   // Retrigger: make sure the chord sounds from its start.
   if (p.retrig && hits.length && hits[0].t > cs) {
     hits.unshift({ t: cs, span: hits[0].t - cs, accent: false, step: 0 });
-  } else if (p.retrig && !hits.length && ce > cs) {
-    hits.push({ t: cs, span: ce - cs, accent: false, step: 0 });
+  } else if (!hits.length && ce > cs) {
+    // Every chord sounds at least once, even a short one that falls between the pattern's hits.
+    hits.push({ t: cs, span: p.retrig ? ce - cs : Math.min(ce - cs, step), accent: false, step: 0 });
   }
   return hits.filter((h) => h.span > 0);
+}
+
+/**
+ * How many grid hits come before tick t in its cycle. Arpeggios use it so a short chord
+ * continues the figure where the previous chord left off instead of restarting at the bottom.
+ */
+export function gridHitIndex(p: PatternSpec, t: number, ts: TimeSig): number {
+  const step = resTicks(p.res, ts);
+  const bar = barTicks(ts);
+  const steps = p.steps || 'x';
+  const cycle = steps.length * step;
+  const ratio = cycle / bar;
+  const seg = ratio > 1 && Math.abs(ratio - Math.round(ratio)) < 1e-9 ? cycle : bar;
+  const segStart = Math.floor(t / seg) * seg;
+  const upto = Math.ceil((t - segStart) / step - 1e-9);
+  let n = 0;
+  for (let i = 0; i < upto; i++) { const ch = steps[i % steps.length]; if (ch === 'x' || ch === 'X') n++; }
+  return n;
 }
 
 /** Arpeggio note order for a voicing. */
@@ -220,10 +239,10 @@ export function renderPattern(p: PatternSpec, notes: number[], cs: number, ce: n
     }
   } else {
     const seq = arpSequence(shifted, p.arp.mode, p.arp.octaves, cs + shifted[0]);
-    let idx = p.arp.start % seq.length;
+    let idx = -1;
     for (const h of hits) {
-      out.push({ t: h.t, d: durOf(h), n: seq[idx % seq.length], v: velOf(h) });
-      idx++;
+      idx = Math.max(idx + 1, gridHitIndex(p, h.t, ctx.ts));
+      out.push({ t: h.t, d: durOf(h), n: seq[(p.arp.start + idx) % seq.length], v: velOf(h) });
     }
   }
   return out;

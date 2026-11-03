@@ -1,10 +1,10 @@
 // Dev-only: render memos and draw waveform envelopes + spectrograms on a canvas for visual checks.
 import { renderMemo } from '../audio/render';
 import { fft } from '../audio/wavetables';
-import { listMemos } from '../store/repo';
+import { TEMPLATES } from '../presets/templates';
 
 export async function drawAll(): Promise<HTMLCanvasElement> {
-  const memos = (await listMemos()).filter((m) => m.sample);
+  const memos = TEMPLATES.map((t) => t.build());
   const W = 1200, rowH = 150;
   const c = document.createElement('canvas');
   c.width = W; c.height = rowH * memos.length;

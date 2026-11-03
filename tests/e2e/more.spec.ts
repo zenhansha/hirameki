@@ -9,10 +9,18 @@ async function openPanel(page: Page, name: string) {
   if (isPhone(page)) await page.locator('.bottomnav button', { hasText: name }).click();
   else if (name !== 'コード') await page.locator('.sidetabs button', { hasText: name }).click();
 }
+/** Edit actions are buttons on PC and live in the その他 menu on phones. */
+async function editAction(page: Page, name: RegExp) {
+  const btn = page.locator('.editbar').getByRole('button', { name });
+  if (await btn.count()) { await btn.first().click(); return; }
+  await page.getByRole('button', { name: 'その他の編集' }).click();
+  await page.getByRole('menuitem', { name }).click();
+}
 async function freshMemoWith(page: Page, degs: number[]) {
   await page.goto('/');
   await page.getByRole('button', { name: 'あとで' }).click();
   await page.getByRole('button', { name: '新しいメモ' }).first().click();
+  await page.getByRole('menuitem', { name: /空のメモ/ }).click();
   for (const d of degs) await page.locator('.dia-grid .cbtn').nth(d).click();
   await expect(page.locator('.timeline .chord')).toHaveCount(degs.length);
 }
@@ -20,7 +28,7 @@ async function freshMemoWith(page: Page, degs: number[]) {
 test('A/B comparison of one chord', async ({ page }) => {
   await freshMemoWith(page, [0, 4, 5, 3]);
   await page.locator('.timeline .chord').nth(3).click();
-  await page.getByRole('button', { name: /B案を作/ }).click();
+  await editAction(page, /B案を作/);
   await expect.poll(() => hm<string>(page, `document.querySelector('.ab-switch button.on')?.textContent`)).toBe('B');
   // Edit on the B side: IV → ii
   await page.locator('.dia-grid .cbtn').nth(1).click();
@@ -31,7 +39,7 @@ test('A/B comparison of one chord', async ({ page }) => {
   await expect(page.locator('.timeline .chord').nth(3)).toContainText('F');
   // Adopt B.
   await page.locator('.ab-switch button', { hasText: 'B' }).click();
-  await page.getByRole('button', { name: /B案を採用/ }).click();
+  await editAction(page, /B案を採用/);
   await expect.poll(() => hm<number>(page, 'hm.memo.value.chords[3].chord.root')).toBe(2);
   await expect.poll(() => hm<unknown>(page, 'hm.memo.value.chords[3].b')).toBeFalsy();
 });
@@ -105,4 +113,49 @@ test('custom key binding (e.g. a left-hand device sending F13)', async ({ page }
   await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F13', code: 'F13', bubbles: true })));
   await expect.poll(() => hm<number>(page, 'hm.memo.value.chords.length')).toBe(1);
   await expect(page.locator('.timeline .chord').first()).toContainText('C');
+});
+
+test('template gallery: preview, then create a memo', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'あとで' }).click();
+  await page.getByRole('button', { name: '新しいメモ' }).first().click();
+  await page.getByRole('menuitem', { name: /テンプレートから作成/ }).click();
+  const dlg = page.getByRole('dialog', { name: 'テンプレートから作成' });
+  await expect(dlg).toBeVisible();
+  await dlg.locator('.tg-cats .chip', { hasText: 'ジャズ・ブルース' }).click();
+  const card = dlg.locator('.tg-card', { hasText: '12小節ブルース' });
+  await card.locator('.mc-play').click();
+  await expect.poll(() => hm<boolean>(page, 'hm.audio.playing'), { timeout: 10000 }).toBe(true);
+  await card.getByRole('button', { name: 'これで作る' }).click();
+  await expect(dlg).toBeHidden();
+  await expect(page.locator('.topbar .title')).toContainText('12小節ブルース');
+  await expect(page.locator('.timeline .chord')).toHaveCount(12);
+  await expect.poll(() => hm<boolean>(page, 'hm.persisted.value'), { timeout: 5000 }).toBe(true);
+  await page.getByRole('button', { name: 'メモ一覧' }).first().click();
+  await expect(page.locator('.memo-card')).toHaveCount(1);
+});
+
+test('half-beat chords: tie, merge and anticipation', async ({ page }) => {
+  await freshMemoWith(page, []);
+  // Input length: half a beat.
+  if (isPhone(page)) await page.locator('.len-pick select').selectOption({ label: '半拍' });
+  else await page.locator('.eb-group.len .chip', { hasText: '半拍' }).click();
+  for (const d of [0, 0, 4]) await page.locator('.dia-grid .cbtn').nth(d).click();
+  await expect(page.locator('.timeline .chord')).toHaveCount(3);
+  // Two identical half-beats are tied (one sound) — shown with a tie mark.
+  await expect(page.locator('.timeline .chord').first().locator('.tie')).toBeVisible();
+  // Zoom adapts so the tiny chords stay tappable.
+  const w = await page.locator('.timeline .chord').first().boundingBox();
+  expect(w!.width).toBeGreaterThan(30);
+  // Merge the first two into one beat.
+  await page.locator('.timeline .chord').first().click();
+  await page.getByRole('button', { name: 'その他の編集' }).click();
+  await page.getByRole('menuitem', { name: /次のコードと結合/ }).click();
+  await expect(page.locator('.timeline .chord')).toHaveCount(2);
+  await expect.poll(() => hm<number>(page, 'hm.memo.value.chords[0].len')).toBe(480);
+  // Anticipate the G by half a beat.
+  await page.locator('.timeline .chord').nth(1).click();
+  await page.getByRole('button', { name: 'その他の編集' }).click();
+  await page.getByRole('menuitem', { name: /前に食う/ }).click();
+  await expect.poll(() => hm<string>(page, 'JSON.stringify(hm.memo.value.chords.map(c => [c.t, c.len]))')).toBe(JSON.stringify([[0, 240], [240, 480]]));
 });

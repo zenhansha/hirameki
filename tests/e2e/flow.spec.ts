@@ -42,6 +42,7 @@ test('main flow: input → pattern → fx → play → save → list → share �
 
   // New memo.
   await page.getByRole('button', { name: '新しいメモ' }).first().click();
+  await page.getByRole('menuitem', { name: /空のメモ/ }).click();
   await expect(page.locator('.timeline .chord')).toHaveCount(0);
   await openPanel(page, 'コード');
 
@@ -166,9 +167,19 @@ test('main flow: input → pattern → fx → play → save → list → share �
 test('delete asks for confirmation and can be undone; JSON export/import round trip', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'あとで' }).click();
+  // Templates are not memos: the list starts empty.
   await page.getByRole('button', { name: 'メモ一覧' }).first().click();
+  await expect(page.locator('.memo-card')).toHaveCount(0);
+  await expect(page.locator('.ls-empty')).toContainText('テンプレート');
+  // Make three memos from templates.
+  for (const name of ['カノン進行', '小室進行', '丸サ進行']) {
+    await page.getByRole('button', { name: 'テンプレートから作成' }).first().click();
+    await page.locator('.tg-card', { hasText: name }).getByRole('button', { name: 'これで作る' }).click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __hm: { persisted: { value: boolean } } }).__hm.persisted.value), { timeout: 5000 }).toBe(true);
+    await page.getByRole('button', { name: 'メモ一覧' }).first().click();
+  }
   const n0 = await page.locator('.memo-card').count();
-  expect(n0).toBeGreaterThanOrEqual(5);
+  expect(n0).toBe(3);
   const first = page.locator('.memo-card').first();
   const title = (await first.locator('.mc-title').innerText()).replace('★', '').trim();
   await first.locator('.more').click();
@@ -198,6 +209,7 @@ test('keyboard shortcuts (PC) / piano mode', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'あとで' }).click();
   await page.getByRole('button', { name: '新しいメモ' }).first().click();
+  await page.getByRole('menuitem', { name: /空のメモ/ }).click();
   if (!isPhone(page)) {
     await page.keyboard.press('1');
     await page.keyboard.press('5');

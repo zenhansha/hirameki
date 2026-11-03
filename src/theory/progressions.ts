@@ -77,6 +77,8 @@ export interface ProgressionMatch {
   length: number;
   /** "（平行調で）" etc. */
   note?: string;
+  /** Found by wrapping around the loop end. */
+  wraps?: boolean;
 }
 
 interface Step {
@@ -119,7 +121,7 @@ function findIn(steps: Step[], cyclic: boolean, note?: string): ProgressionMatch
       if (k >= need) {
         const endStep = steps[(s + k - 1) % n];
         const wraps = s + k - 1 >= n;
-        out.push({ def, start: steps[s].idx, end: wraps ? -1 : endStep.last + 1, length: k, note });
+        out.push({ def, start: steps[s].idx, end: wraps ? -1 : endStep.last + 1, length: k, note, wraps });
         if (wraps) out[out.length - 1].end = steps[n - 1].last + 1;
       }
     }
@@ -143,7 +145,8 @@ export function detectProgressions(chords: ChordSpec[], key: Key, opts: { cyclic
   }
   // Prefer longer matches, then pattern order.
   const order = (m: ProgressionMatch) => PROGRESSIONS.indexOf(m.def);
-  matches.sort((a, b) => b.length - a.length || order(a) - order(b) || a.start - b.start);
+  // Longer first; for equal length, a match read from the start of the loop beats one found by wrapping around.
+  matches.sort((a, b) => b.length - a.length || Number(!!a.wraps) - Number(!!b.wraps) || a.start - b.start || order(a) - order(b));
   const kept: ProgressionMatch[] = [];
   for (const m of matches) {
     const overlaps = kept.some((k) => m.start < k.end && k.start < m.end && (k.length >= m.length));

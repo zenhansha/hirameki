@@ -1,7 +1,7 @@
 // Memo → playable events (chords with patterns + bass + melody), used by playback, WAV and MIDI.
 import type { Memo } from '../store/schema';
 import { mod12 } from '../theory/core';
-import { chordPcs, ChordSpec } from '../theory/chord';
+import { chordEquals, chordPcs, ChordSpec } from '../theory/chord';
 import { voiceChord } from '../theory/voicing';
 import { renderBass } from './bass';
 import { NoteEvent, PatternSpec, renderPattern } from './pattern';
@@ -22,6 +22,10 @@ export interface CompiledChord {
 export interface Compiled {
   events: SeqEvent[];
   chords: CompiledChord[];
+  /** Ids of chords that are tied into the next one (same chord, no re-attack). */
+  ties: Set<string>;
+  /** Chords after merging ties (what actually gets played). */
+  spans: CompiledChord[];
   songEnd: number;
   loopStart: number;
   loopEnd: number;
@@ -56,12 +60,26 @@ export function compileMemo(memo: Memo, opts: CompileOptions = {}): Compiled {
     chords.push({ id: it.id, t: it.t, len, chord: s.chord, pattern, notes: v.notes, bass: v.bass });
   }
 
+  // Ties: the same chord continuing (e.g. two half-beats, or an anticipation 食い into the
+  // next bar) is played as one long chord so the rhythm connects instead of re-attacking.
+  const ties = new Set<string>();
+  const spans: CompiledChord[] = [];
+  for (const c of chords) {
+    const last = spans[spans.length - 1];
+    if (memo.tie && last && last.t + last.len === c.t && chordEquals(last.chord, c.chord) && JSON.stringify(last.pattern) === JSON.stringify(c.pattern)) {
+      ties.add(chords[chords.indexOf(c) - 1].id);
+      last.len += c.len;
+      continue;
+    }
+    spans.push({ ...c });
+  }
+
   // Second pass: events.
-  chords.forEach((c, i) => {
+  spans.forEach((c, i) => {
     const ce = c.t + c.len;
     for (const e of renderPattern(c.pattern, c.notes, c.t, ce, ctx)) events.push({ ...e, p: 0 });
     if (bassOn) {
-      const next = chords[i + 1];
+      const next = spans[i + 1];
       const nextContiguous = next && next.t === ce ? next : undefined;
       const info = {
         cs: c.t, ce, bass: c.bass,
@@ -87,6 +105,8 @@ export function compileMemo(memo: Memo, opts: CompileOptions = {}): Compiled {
   return {
     events: out,
     chords,
+    ties,
+    spans,
     songEnd,
     loopStart: memo.loop.start * bar,
     loopEnd: memo.loop.end * bar,

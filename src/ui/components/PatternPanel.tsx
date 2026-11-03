@@ -148,6 +148,7 @@ export function PatternPanel() {
           <Slider label="タイミングゆらぎ" min={0} max={1} value={m.humanize.time} onChange={(v) => updateMemo({ humanize: { ...m.humanize, time: v } }, 'hum-t')} format={(v) => Math.round(v * 20) + 'ms'} />
           <Slider label="強さのゆらぎ" min={0} max={1} value={m.humanize.vel} onChange={(v) => updateMemo({ humanize: { ...m.humanize, vel: v } }, 'hum-v')} format={(v) => Math.round(v * 35) + '%'} />
           <Toggle small value={m.autoVoice} onChange={(v) => updateMemo({ autoVoice: v })} label="ボイシング自動調整（なめらかにつなぐ）" />
+          <Toggle small value={m.tie} onChange={(v) => updateMemo({ tie: v })} label="同じコードが続いたらタイでつなげる（食い・半拍2つも1つの音に）" />
         </div>
       </Card>
 

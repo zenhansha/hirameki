@@ -56,6 +56,8 @@ export interface Memo {
 
   chords: ChordItem[];
   autoVoice: boolean;
+  /** Same chord continuing = one sustained chord (tie). */
+  tie: boolean;
   pattern: PatternSpec;
   pump: PumpSpec;
   bass: BassSpec;
@@ -102,6 +104,7 @@ export function defaultMemo(): Memo {
     metronome: false,
     chords: [],
     autoVoice: true,
+    tie: true,
     pattern: { ...DEFAULT_PATTERN, res: 'bar', steps: 'x-------', vel: 0.75 },
     pump: { ...DEFAULT_PUMP },
     bass: { on: true, style: 'root', oct: 0, vol: 0.8, patch: builtinPatch('bass-sub')! },
@@ -216,6 +219,7 @@ export function normalizeMemo(raw: unknown): Memo {
     metronome: !!r.metronome,
     chords: items.filter((i) => i.t < bars * bar).map((i) => (i.t + i.len > bars * bar ? { ...i, len: bars * bar - i.t } : i)),
     autoVoice: r.autoVoice !== false,
+    tie: r.tie !== false,
     pattern: normalizePattern(r.pattern ?? d.pattern),
     pump: {
       on: !!pumpRaw.on,
@@ -288,13 +292,17 @@ export interface AppSettings {
   audition: boolean;
   welcomed: boolean;
   deviceId: string;
+  /** Typing in the middle pushes later chords back instead of overwriting. */
+  insertMode: boolean;
+  /** Bars per timeline row ('auto' = fit the shortest chord). */
+  zoom: 'auto' | 1 | 2 | 4 | 8;
 }
 
 export function defaultSettings(): AppSettings {
   return {
     v: 1, label: 'roman', romanStyle: 'classic', master: 0.8, light: 'auto',
     midiEnabled: false, midiInputChords: true, midiThru: true, midiMap: {}, keyMap: {},
-    inputLen: 0, seventh: false, audition: true, welcomed: false, deviceId: newId('d'),
+    inputLen: 0, seventh: false, audition: true, welcomed: false, deviceId: newId('d'), insertMode: false, zoom: 'auto',
   };
 }
 
@@ -318,5 +326,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     audition: r.audition !== false,
     welcomed: !!r.welcomed,
     deviceId: typeof r.deviceId === 'string' && r.deviceId ? r.deviceId : d.deviceId,
+    insertMode: !!r.insertMode,
+    zoom: ([1, 2, 4, 8] as const).includes(r.zoom as 1) ? (r.zoom as 1 | 2 | 4 | 8) : 'auto',
   };
 }

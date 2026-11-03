@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { mergeItems, mergeWithNext, shiftStart, rippleDelete, copyItems, pasteItems } from '../../src/seq/timeline';
 import { ChordItem, clearRange, contentEnd, deleteTime, duplicateItems, insertTime, isValidTimeline, itemAt, rangeIds, removeItems, resizeItem, shiftContent, sideOf, splitItem, swapContents, truncate, writeChord } from '../../src/seq/timeline';
 import { makeChord } from '../../src/theory/chord';
 import { DEFAULT_PATTERN, PatternSpec, arpSequence, chordGainComp, normalizePattern, pumpGain, renderPattern, rhythmHits } from '../../src/seq/pattern';
@@ -208,12 +209,28 @@ describe('patterns', () => {
     expect(arpSequence([60, 64, 67], 'random', 2, 42)).toEqual(r);
     expect(arpSequence([60], 'updown', 1, 0)).toEqual([60]);
   });
-  it('arpeggio start note and reset per chord', () => {
+  it('arpeggio start note; a chord in the middle of the bar continues the figure', () => {
     const p = pat({ kind: 'arp', res: '8', steps: 'x', arp: { mode: 'up', octaves: 1, start: 1 } });
     const ev = renderPattern(p, [60, 64, 67], 0, 960, ctx);
     expect(ev.map((e) => e.n)).toEqual([64, 67, 60, 64]);
+    // 4 hits already happened in this bar -> continues at index 1+4 = 5 -> 3rd tone
     const ev2 = renderPattern(p, [62, 65, 69], 960, 1920, ctx);
-    expect(ev2[0].n).toBe(65);
+    expect(ev2.map((e) => e.n)).toEqual([69, 62, 65, 69]);
+    // a new bar starts the figure again
+    expect(renderPattern(p, [62, 65, 69], 1920, 2880, ctx)[0].n).toBe(65);
+  });
+  it('half-beat chords with a 16th arpeggio keep climbing instead of restarting', () => {
+    const p = pat({ kind: 'arp', res: '16', steps: 'x', arp: { mode: 'up', octaves: 2, start: 0 } });
+    const a = renderPattern(p, [60, 64, 67], 0, 240, ctx).map((e) => e.n);
+    const b = renderPattern(p, [60, 64, 67], 240, 480, ctx).map((e) => e.n);
+    expect(a).toEqual([60, 64]);
+    expect(b).toEqual([67, 72]);
+  });
+  it('a short chord between the hits of an offbeat pattern still sounds', () => {
+    const p = pat({ res: '8', steps: '.X.X.X.X', retrig: false });
+    const ev = renderPattern(p, [60, 64, 67], 0, 240, ctx);
+    expect(ev.length).toBe(3);
+    expect(ev[0].t).toBe(0);
   });
   it('octave shift', () => {
     const ev = renderPattern(pat({ oct: 1 }), [60], 0, BAR, ctx);
@@ -380,5 +397,81 @@ describe('schema', () => {
     const m = defaultMemo();
     m.chords = seq4();
     expect(normalizeMemo(JSON.parse(JSON.stringify(m)))).toEqual(normalizeMemo(m));
+  });
+});
+
+describe('rhythm-aware editing', () => {
+  const half = 240;
+  function halves(roots: number[]): ChordItem[] {
+    let items: ChordItem[] = [];
+    roots.forEach((r, i) => { items = writeChord(items, i * half, half, c(r)).items; });
+    return items;
+  }
+  it('merges two half-beats into one beat', () => {
+    const items = halves([0, 7]);
+    const r = mergeItems(items, [items[0].id, items[1].id]);
+    expect(r.items.map((i) => [i.t, i.len, i.chord.root])).toEqual([[0, 480, 0]]);
+    const r2 = mergeWithNext(halves([0, 7, 9]), halves([0, 7, 9])[0].id);
+    expect(r2.items.length).toBe(3); // different ids, nothing merged
+    const h = halves([0, 7, 9]);
+    expect(mergeWithNext(h, h[1].id).items.map((i) => [i.t, i.len])).toEqual([[0, 240], [240, 480]]);
+    expect(mergeWithNext(h, h[2].id).items).toBe(h);
+  });
+  it('anticipation (食い) moves the chord start earlier and back', () => {
+    const items = seq4();
+    const a = shiftStart(items, items[1].id, 240);
+    expect(a.map((i) => [i.t, i.len])).toEqual([[0, 1680], [1680, 2160], [3840, 1920], [5760, 1920]]);
+    const back = shiftStart(a, items[1].id, -240);
+    expect(back.map((i) => [i.t, i.len])).toEqual(items.map((i) => [i.t, i.len]));
+    expect(shiftStart(items, items[0].id, 240)).toBe(items); // nothing before bar 1
+    const tiny = halves([0, 7]);
+    expect(shiftStart(tiny, tiny[1].id, 240)).toBe(tiny); // would eat the whole previous chord
+    expect(shiftStart(tiny, tiny[1].id, -240)).toBe(tiny); // would leave nothing
+    expect(isValidTimeline(a)).toBe(true);
+  });
+  it('ripple delete closes the gap', () => {
+    const items = seq4();
+    expect(rippleDelete(items, [items[1].id]).map((i) => [i.t, i.chord.root])).toEqual([[0, 0], [1920, 2], [3840, 3]]);
+  });
+  it('copy / paste (overwrite and insert)', () => {
+    const items = seq4();
+    const clip = copyItems(items, [items[0].id, items[1].id]);
+    expect(clip.span).toBe(3840);
+    const over = pasteItems(items, clip, 3840, false);
+    expect(over.items.map((i) => i.chord.root)).toEqual([0, 1, 0, 1]);
+    const ins = pasteItems(items, clip, 1920, true);
+    expect(ins.items.map((i) => i.chord.root)).toEqual([0, 0, 1, 1, 2, 3]);
+    expect(ins.ids.length).toBe(2);
+    expect(isValidTimeline(ins.items)).toBe(true);
+  });
+});
+
+describe('ties', () => {
+  it('the same chord continuing is played as one chord (no re-attack)', () => {
+    const m = defaultMemo();
+    m.bass.on = false;
+    let items: ChordItem[] = [];
+    // C for 3.5 beats, then G anticipated on 4& tied into a whole bar of G.
+    items = writeChord(items, 0, 1680, c(0)).items;
+    items = writeChord(items, 1680, 240, makeChord(7, 4)).items;
+    items = writeChord(items, 1920, 1920, makeChord(7, 4)).items;
+    m.chords = items;
+    m.bars = 2;
+    const cm = compileMemo(m);
+    expect(cm.ties.size).toBe(1);
+    expect(cm.spans.map((s) => [s.t, s.len])).toEqual([[0, 1680], [1680, 2160]]);
+    const g = cm.events.filter((e) => e.t >= 1680);
+    expect(new Set(g.map((e) => e.t))).toEqual(new Set([1680]));
+    m.tie = false;
+    const cm2 = compileMemo(m);
+    expect(new Set(cm2.events.filter((e) => e.t >= 1680).map((e) => e.t))).toEqual(new Set([1680, 1920]));
+  });
+  it('different patterns are not tied', () => {
+    const m = defaultMemo();
+    let items: ChordItem[] = [];
+    items = writeChord(items, 0, 960, c(0)).items;
+    items = writeChord(items, 960, 960, c(0), { pat: pat({ kind: 'arp', res: '8', steps: 'x' }) }).items;
+    m.chords = items;
+    expect(compileMemo(m).ties.size).toBe(0);
   });
 });

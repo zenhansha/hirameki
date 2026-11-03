@@ -72,7 +72,7 @@ export function buildMidi(memo: Memo, opts: MidiOptions): Uint8Array {
   const tracks: Ev[][] = [[], [], []];
   for (let r = 0; r < reps; r++) {
     const off = r * span;
-    for (const ch of c.chords) {
+    for (const ch of c.spans) {
       if (ch.t < from || ch.t >= to) continue;
       const name = chordName(ch.chord, memo.key);
       const b = textBytes(name);

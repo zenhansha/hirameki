@@ -11,7 +11,7 @@ import { chordForRoot, chordsForMelody, estimateKey, segmentNotes } from '../../
 import { chordName } from '../../src/theory/chord';
 import { parseImport, ImportError } from '../../src/store/repo';
 import { builtinPatch } from '../../src/presets/synth';
-import { sampleMemos } from '../../src/presets/samples';
+import { TEMPLATES } from '../../src/presets/templates';
 import { compileMemo } from '../../src/seq/compile';
 import { detectProgressions } from '../../src/theory/progressions';
 import { sortItems } from '../../src/seq/timeline';
@@ -193,19 +193,30 @@ describe('humming', () => {
   });
 });
 
-describe('sample memos', () => {
-  it('are valid, non-empty and named after the progression they contain', () => {
-    const list = sampleMemos();
-    expect(list.length).toBeGreaterThanOrEqual(5);
-    for (const m of list) {
+describe('templates', () => {
+  it('build valid memos named after the progression they contain', () => {
+    expect(TEMPLATES.length).toBeGreaterThanOrEqual(10);
+    expect(new Set(TEMPLATES.map((t) => t.id)).size).toBe(TEMPLATES.length);
+    const expected = ['王道進行', 'カノン進行', '丸サ進行', '小室進行', 'Just the Two of Us進行', 'センシティブ進行', 'ポップパンク進行', '循環コード', 'ブルース進行'];
+    for (const t of TEMPLATES) {
+      const m = t.build();
       const n = normalizeMemo(JSON.parse(JSON.stringify(m)));
-      expect(n.chords.length).toBeGreaterThan(0);
-      expect(compileMemo(n).events.length).toBeGreaterThan(0);
+      expect(n.sample).toBeUndefined();
+      expect(n.chords.length, t.id).toBeGreaterThan(0);
+      expect(compileMemo(n).events.length, t.id).toBeGreaterThan(0);
       const found = detectProgressions(sortItems(n.chords).map((c) => c.chord), n.key, { cyclic: true }).map((p) => [p.def.name, ...(p.def.aliases ?? [])]).flat();
-      const expected = ['王道進行', 'カノン進行', '丸サ進行', '小室進行', 'Just the Two of Us進行', 'センシティブ進行', '循環コード（イチロクニーゴー）'];
-      const named = expected.find((e) => m.title.includes(e.replace(/（.*/, '')));
-      if (named) expect(found.some((f) => f.includes(named.replace(/（.*/, ''))), m.title).toBe(true);
+      const named = expected.find((e) => t.name.includes(e.replace('進行', '')));
+      if (named) expect(found.some((f) => f.includes(named.replace('進行', ''))), t.name + ' → ' + found.join(',')).toBe(true);
     }
+  });
+  it('the anticipation template really starts chords half a beat early', () => {
+    const m = TEMPLATES.find((t) => t.id === 'citypop-antic')!.build();
+    expect(sortItems(m.chords).map((c) => c.t)).toEqual([0, 1680, 3600, 5520]);
+  });
+  it('each build is a fresh copy', () => {
+    const a = TEMPLATES[0].build(), b = TEMPLATES[0].build();
+    a.chords[0].chord.q = 'dim';
+    expect(b.chords[0].chord.q).not.toBe('dim');
   });
 });
 

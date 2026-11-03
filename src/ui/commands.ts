@@ -1,10 +1,12 @@
 // Commands shared by keyboard shortcuts, MIDI learn and custom key bindings (e.g. a left-hand device).
 import { diatonicChord } from '../theory/diatonic';
+import { openTemplates } from './components/TemplateGallery';
 import { lengthChoices } from '../seq/time';
 import { findItem } from '../seq/timeline';
 import {
   applyMod, deleteSelection, duplicateSelection, inputChord, inputLength, moveSelection, newMemo, play, resizeSelection, stepSelection,
   tapTempo, togglePlay, toStart, transpose, updateMemo, clearSelection,
+  mergeSelection, anticipate, rippleDeleteSelection, copySelection, pasteAtCaret, selectAll, toggleInsertMode,
 } from './actions';
 import { dialog, memo, redo, selection, settings, side, toast, undo, updateSettings, view, hasB, tab, narrow, inputMode } from './state';
 
@@ -56,6 +58,15 @@ export const COMMANDS: Command[] = [
   { id: 'moveRight', label: 'コードを右と入れ替え', group: '編集', run: () => moveSelection(1) },
   { id: 'delete', label: '削除', group: '編集', run: deleteSelection },
   { id: 'dup', label: '複製', group: '編集', run: duplicateSelection },
+  { id: 'merge', label: '結合（次のコードとつなげる）', group: '編集', run: mergeSelection },
+  { id: 'antic', label: '半拍前に食う', group: '編集', run: () => anticipate(1) },
+  { id: 'unantic', label: '食いを戻す', group: '編集', run: () => anticipate(-1) },
+  { id: 'ripple', label: '削除して詰める', group: '編集', run: rippleDeleteSelection },
+  { id: 'copy', label: 'コピー', group: '編集', run: () => copySelection(false) },
+  { id: 'cut', label: '切り取り', group: '編集', run: () => copySelection(true) },
+  { id: 'paste', label: '貼り付け', group: '編集', run: pasteAtCaret },
+  { id: 'selAll', label: 'すべて選択', group: '編集', run: selectAll },
+  { id: 'insMode', label: '挿入モード ON/OFF', group: '編集', run: toggleInsertMode },
   { id: 'undo', label: '元に戻す', group: '編集', run: () => { if (!undo()) toast('これ以上戻せないよ'); } },
   { id: 'redo', label: 'やり直す', group: '編集', run: () => { redo(); } },
   { id: 'lenDown', label: '長さを短く', group: '編集', run: () => changeLen(-1) },
@@ -63,7 +74,8 @@ export const COMMANDS: Command[] = [
   { id: 'transDown', label: '半音下に移調', group: '編集', run: () => transpose(-1) },
   { id: 'transUp', label: '半音上に移調', group: '編集', run: () => transpose(1) },
   { id: 'escape', label: '選択解除', group: '編集', run: () => { if (dialog.value) { dialog.value.resolve(null); dialog.value = null; } else clearSelection(); } },
-  { id: 'newMemo', label: '新しいメモ', group: 'メモ', run: () => { newMemo(); } },
+  { id: 'newMemo', label: '新しい空のメモ', group: 'メモ', run: () => { newMemo(); } },
+  { id: 'templates', label: 'テンプレートから作成', group: 'メモ', run: () => { openTemplates(); } },
   { id: 'list', label: 'メモ一覧', group: 'メモ', run: () => { view.value = view.value === 'list' ? 'editor' : 'list'; } },
   { id: 'piano', label: 'ピアノ入力へ', group: 'メモ', run: () => { inputMode.value = 'piano'; if (narrow.value) tab.value = 'input'; } },
   { id: 'help', label: 'ショートカット一覧', group: 'メモ', run: () => { window.dispatchEvent(new Event('hm-help')); } },
@@ -78,9 +90,10 @@ export const DEFAULT_KEYS: Record<string, string> = {
   Q: 'mod7', W: 'modM7', E: 'modSus4', R: 'modAdd9', Y: 'modSwap', I: 'modInv',
   ArrowLeft: 'prev', ArrowRight: 'next', 'Shift+ArrowLeft': 'moveLeft', 'Shift+ArrowRight': 'moveRight',
   'Ctrl+Shift+ArrowLeft': 'selPrev', 'Ctrl+Shift+ArrowRight': 'selNext',
-  Delete: 'delete', Backspace: 'delete', 'Ctrl+D': 'dup', 'Ctrl+Z': 'undo', 'Ctrl+Y': 'redo', 'Ctrl+Shift+Z': 'redo',
+  Delete: 'delete', Backspace: 'delete', 'Ctrl+D': 'dup', J: 'merge', 'Alt+ArrowLeft': 'antic', 'Alt+ArrowRight': 'unantic', 'Shift+Delete': 'ripple',
+  'Ctrl+C': 'copy', 'Ctrl+X': 'cut', 'Ctrl+V': 'paste', 'Ctrl+A': 'selAll', Insert: 'insMode', 'Ctrl+Z': 'undo', 'Ctrl+Y': 'redo', 'Ctrl+Shift+Z': 'redo',
   ',': 'lenDown', '.': 'lenUp', '[': 'transDown', ']': 'transUp', Escape: 'escape',
-  'Alt+N': 'newMemo', 'Alt+L': 'list', P: 'piano', 'Shift+/': 'help', '?': 'help',
+  'Alt+N': 'newMemo', 'Alt+T': 'templates', 'Alt+L': 'list', P: 'piano', 'Shift+/': 'help', '?': 'help',
 };
 
 /** "Ctrl+Shift+Z" style name of a key event (layout-independent for letters/digits). */
@@ -135,7 +148,7 @@ export function installKeyboard() {
     if (combo === 'Enter' && (t?.tagName === 'BUTTON' || t?.tagName === 'A')) return;
     const id = keyBindings()[combo];
     if (!id) return;
-    if (view.value === 'list' && !['play', 'list', 'newMemo', 'escape', 'help'].includes(id)) return;
+    if (view.value === 'list' && !['play', 'list', 'newMemo', 'templates', 'escape', 'help'].includes(id)) return;
     const cmd = COMMAND_MAP[id];
     if (!cmd) return;
     e.preventDefault();

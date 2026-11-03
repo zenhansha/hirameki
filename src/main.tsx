@@ -9,7 +9,7 @@ import {
 import { loadSettings, listMemos, saveMemo, kvGet, kvSet, purgeDeleted } from './store/repo';
 import { getBackend } from './store/db';
 import { defaultMemo, displayTitle } from './store/schema';
-import { sampleMemos } from './presets/samples';
+import { memoFromTemplate } from './ui/actions';
 import { codeFromHash, decodeMemo, ShareDecodeError } from './io/share';
 import { enableMidi, midiSupported, injectMidi } from './io/webmidi';
 import { openMemo } from './ui/actions';
@@ -33,12 +33,12 @@ async function boot() {
   const backend = await getBackend();
   if (backend.kind === 'memory') toast('この環境では保存ができません（プライベートモード？）。JSON書き出しで保存してね', 'error', undefined, 8000);
 
-  // First launch: install the sample memos once.
-  const seeded = await kvGet<boolean>('seeded');
-  if (!seeded) {
+  // v1.0 stored the samples as memos. Templates now live in the "テンプレートから作成" menu,
+  // so remove the sample memos the user never touched (edited ones are the user's now).
+  if (!(await kvGet<boolean>('templatesV2'))) {
     try {
-      for (const m of sampleMemos()) await saveMemo(m, false);
-      await kvSet('seeded', true);
+      for (const m of await listMemos()) if (m.sample && m.rev === 0) await backend.del('memos', m.id);
+      await kvSet('templatesV2', true);
     } catch { /* storage might be unavailable */ }
   }
 
@@ -55,9 +55,8 @@ async function boot() {
     }
     history.replaceState(null, '', location.pathname + location.search);
   } else if (!settings.value.welcomed) {
-    const list = await listMemos().catch(() => []);
-    const first = list.find((m) => m.sample && m.title.startsWith('王道')) ?? list[0];
-    if (first) loadMemoIntoEditor(first, true);
+    // First launch: a template is open (not saved unless edited) so ▶ immediately sounds good.
+    loadMemoIntoEditor(memoFromTemplate('oudou-dreamy'), false);
   } else {
     // Ready for a new idea right away; the last memo is one tap away in the list.
     loadMemoIntoEditor(defaultMemo(), false);

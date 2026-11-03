@@ -1,5 +1,6 @@
 // User actions: every edit goes through commit() so undo/redo and autosave just work.
 import { batch, signal } from '@preact/signals';
+import { mergeItems, mergeWithNext, shiftStart, rippleDelete, copyItems, pasteItems, contentEnd } from '../seq/timeline';
 import { Memo, defaultMemo } from '../store/schema';
 import { ChordSpec } from '../theory/chord';
 import { Key, mod12 } from '../theory/core';
@@ -11,12 +12,13 @@ import {
   shiftContent, sideOf, sortItems, splitItem, swapContents, truncate, updateItem, writeChord,
 } from '../seq/timeline';
 import { PatternSpec, PumpSpec } from '../seq/pattern';
-import { TimeSig, barTicks, beatTicks, lengthChoices } from '../seq/time';
+import { TimeSig, barTicks, beatTicks, isCompound, lengthChoices, unitTicks } from '../seq/time';
 import { audio } from '../audio/host';
 import {
-  caret, commit, flushSave, lastInserted, loadMemoIntoEditor, memo, selection, settings, side, toast, auditionMemo, nowPlayingId, view,
+  caret, commit, flushSave, lastInserted, loadMemoIntoEditor, memo, selection, settings, side, toast, auditionMemo, nowPlayingId, view, undo, updateSettings,
 } from './state';
 import { getMemo, kvGet } from '../store/repo';
+import { TEMPLATES, templateById } from '../presets/templates';
 
 // ---- helpers ------------------------------------------------------------------
 
@@ -88,10 +90,14 @@ export function inputChord(chord: ChordSpec, opts: { audition?: boolean } = {}) 
   const len = inputLength(m);
   const t = Math.max(0, caret.value);
   let newIdOut = '';
+  const insert = settings.value.insertMode && m.chords.some((i) => i.t + i.len > t);
   commit((mm) => {
-    const r = writeChord(mm.chords, t, len, chord);
+    // Insert mode pushes the following chords back instead of overwriting them.
+    const base = insert ? insertTime(mm.chords, t, len) : mm.chords;
+    const r = writeChord(base, t, len, chord);
     newIdOut = r.id;
-    return extendBars({ ...mm, chords: r.items }, t + len);
+    const end = Math.max(t + len, contentEnd(r.items));
+    return extendBars({ ...mm, chords: r.items }, end);
   });
   batch(() => {
     caret.value = t + len;
@@ -233,6 +239,7 @@ export function splitSelection() {
 export function resizeSelection(len: number) {
   const sel = selection.value;
   if (!sel.length) return;
+  const before = memo.value.chords.length;
   commit((m) => {
     let items = m.chords;
     let end = 0;
@@ -243,6 +250,97 @@ export function resizeSelection(len: number) {
     }
     return extendBars({ ...m, chords: items }, end);
   });
+  const lost = before - memo.value.chords.length;
+  if (lost > 0) toast(`後ろのコードを${lost}個上書きしたよ`, 'info', { label: '元に戻す', run: () => { undo(); } });
+}
+
+// ---- rhythm-aware edits -------------------------------------------------------
+
+/** One "nudge" for anticipation: half a beat (an eighth in compound meters). */
+export function nudgeTicks(m: Memo = memo.value): number {
+  return isCompound(m.ts) ? unitTicks(m.ts) : beatTicks(m.ts) / 2;
+}
+
+/** Merge the selection (2+ chords), or the selected chord with the next one. */
+export function mergeSelection() {
+  const sel = selection.value;
+  const id = sel[0] ?? lastInserted.value;
+  if (!id) return toast('結合するコードを選んでね（2つ以上選ぶか、1つ選ぶと次のコードとつなげる）');
+  let out: string | null = null;
+  const before = memo.value.chords;
+  commit((m) => {
+    const r = sel.length >= 2 ? mergeItems(m.chords, sel) : mergeWithNext(m.chords, id);
+    out = r.id;
+    return r.items === m.chords ? m : { ...m, chords: r.items };
+  });
+  if (memo.value.chords === before) return toast('後ろにつなげるコードがないよ');
+  if (out) selection.value = [out];
+}
+
+/** Anticipation (食い): start the chord half a beat earlier (dir 1) or move it back (dir −1). */
+export function anticipate(dir: 1 | -1) {
+  const it = targetItem();
+  if (!it) return toast('食わせたいコードを選んでね');
+  const amt = nudgeTicks() * dir;
+  const before = memo.value.chords;
+  commit((m) => {
+    const items = shiftStart(m.chords, it.id, amt);
+    return items === m.chords ? m : { ...m, chords: items };
+  });
+  if (memo.value.chords === before) toast(dir > 0 ? 'これ以上前には食えないよ（前のコードが短すぎるか、曲の頭）' : 'これ以上は戻せないよ');
+  else if (dir > 0) toast('半拍前から鳴らすようにしたよ（同じコードが続く時はタイでつながる）', 'ok', undefined, 2200);
+}
+
+export function rippleDeleteSelection() {
+  const sel = selection.value;
+  if (!sel.length) return toast('消して詰めたいコードを選んでね');
+  const first = findItem(memo.value.chords, sel[0]);
+  commit((m) => ({ ...m, chords: rippleDelete(m.chords, sel) }));
+  batch(() => { selection.value = []; lastInserted.value = null; if (first) caret.value = first.t; });
+}
+
+export const clipboard = signal<{ items: ChordItem[]; span: number } | null>(null);
+
+export function copySelection(cut = false) {
+  const sel = selection.value;
+  if (!sel.length) return toast('コピーするコードを選んでね');
+  clipboard.value = copyItems(memo.value.chords, sel);
+  if (cut) deleteSelection();
+  toast(cut ? '切り取ったよ' : `${sel.length}個のコードをコピーしたよ`, 'ok', undefined, 1600);
+}
+
+export function pasteAtCaret() {
+  const clip = clipboard.value;
+  if (!clip || !clip.items.length) return toast('先にコードをコピーしてね');
+  const m = memo.value;
+  const selIt = selection.value.length ? findItem(m.chords, selection.value[selection.value.length - 1]) : undefined;
+  const t = selIt ? selIt.t + selIt.len : caret.value;
+  let ids: string[] = [];
+  commit((mm) => {
+    const r = pasteItems(mm.chords, clip, t, settings.value.insertMode);
+    ids = r.ids;
+    return extendBars({ ...mm, chords: r.items }, Math.max(t + clip.span, contentEnd(r.items)));
+  });
+  selection.value = ids;
+}
+
+export function selectAll() {
+  const ids = sortItems(memo.value.chords).map((i) => i.id);
+  selection.value = ids;
+  lastInserted.value = null;
+}
+
+export function selectBar(bar: number) {
+  const m = memo.value;
+  const b = barTicks(m.ts);
+  const ids = sortItems(m.chords).filter((i) => i.t < (bar + 1) * b && i.t + i.len > bar * b).map((i) => i.id);
+  if (ids.length) selection.value = ids;
+}
+
+export function toggleInsertMode() {
+  const on = !settings.value.insertMode;
+  updateSettings({ insertMode: on });
+  toast(on ? '挿入モード：入力すると後ろのコードが後ろにずれるよ' : '上書きモード：入力した場所のコードを置き換えるよ', 'info', undefined, 2200);
 }
 
 export function makeB() {
@@ -436,6 +534,28 @@ export async function newMemo() {
   // Keep the user's last tempo/key? A fresh start is clearer: defaults.
   loadMemoIntoEditor(m, false);
   view.value = 'editor';
+}
+
+/** A fresh, unsaved memo built from a template. */
+export function memoFromTemplate(id: string): Memo {
+  const t = templateById(id) ?? TEMPLATES[0];
+  const m = t.build();
+  const now = Date.now();
+  return { ...m, id: newId('m'), createdAt: now, updatedAt: now, rev: 0 };
+}
+
+/** Menu → テンプレートから作成: opens it as a new memo and saves it to the list. */
+export async function createFromTemplate(id: string) {
+  await flushSave();
+  audio.stop();
+  auditionMemo.value = null;
+  nowPlayingId.value = null;
+  const m = memoFromTemplate(id);
+  loadMemoIntoEditor(m, false);
+  // Mark dirty so it gets saved (the user chose to create it).
+  commit((x) => ({ ...x }), { noHistory: true });
+  view.value = 'editor';
+  toast(`「${m.title}」から新しいメモを作ったよ。自由に変えてね`, 'ok');
 }
 
 export async function openMemo(id: string) {

@@ -8,7 +8,8 @@ import { detectProgressions, progressionRomanText } from '../../theory/progressi
 import { sideOf, sortItems } from '../../seq/timeline';
 import { barTicks, beatTicks, beatsPerBar } from '../../seq/time';
 import { patternName } from '../../presets/patterns';
-import { auditionChord, insertBarAt, deleteBarAt, seekBar, selectChord, setBars, setCaret, setLoop, snapTick, swapItems, cue } from '../actions';
+import { auditionChord, insertBarAt, deleteBarAt, seekBar, selectChord, setBars, setCaret, setLoop, snapTick, swapItems, cue, selectBar } from '../actions';
+import { compileMemo } from '../../seq/compile';
 import { Icon } from './common';
 
 function useWidth(ref: { current: HTMLElement | null }) {
@@ -81,14 +82,24 @@ export function Timeline() {
   const bar = barTicks(m.ts);
   const beat = beatTicks(m.ts);
   const nBeats = beatsPerBar(m.ts);
-  const bpr = width < 520 ? 4 : width < 900 ? 4 : m.bars > 8 ? 8 : Math.min(8, Math.max(4, m.bars));
+  const items = useMemo(() => sortItems(m.chords), [m.chords]);
+  // Bars per row: 'auto' keeps the shortest chord at least ~40px wide so it stays tappable.
+  const zoom = settings.value.zoom;
+  const bpr = useMemo(() => {
+    if (zoom !== 'auto') return zoom;
+    const shortest = items.reduce((mn, i) => Math.min(mn, i.len), bar);
+    const fit = Math.floor((width * shortest) / (bar * 40));
+    const cap = width < 520 ? 4 : 8;
+    const pick = [8, 4, 2, 1].find((n) => n <= Math.min(cap, Math.max(1, fit))) ?? 1;
+    return m.bars <= 4 && pick > 4 ? 4 : pick;
+  }, [zoom, items, width, bar, m.bars]);
   const rows = Math.ceil(m.bars / bpr);
   const rowTicks = bpr * bar;
-  const items = useMemo(() => sortItems(m.chords), [m.chords]);
   const sel = selection.value;
   const label = settings.value.label;
   const style = settings.value.romanStyle;
   const sd = side.value;
+  const ties = useMemo(() => compileMemo(m, { side: sd }).ties, [m, sd]);
   const isPlaying = playing.value;
   useNowPlaying(wrap);
 
@@ -191,13 +202,20 @@ export function Timeline() {
     if (b !== r.cur) { r.cur = b; r.moved = true; }
     if (r.moved) setLoopPreview([Math.min(r.startBar, b), Math.max(r.startBar, b) + 1]);
   };
+  const lastRulerTap = useRef<{ bar: number; at: number }>({ bar: -1, at: 0 });
   const onRulerUp = () => {
     const r = rulerRef.current;
     rulerRef.current = null;
     setLoopPreview(null);
     if (!r) return;
     if (r.moved) setLoop(Math.min(r.startBar, r.cur), Math.max(r.startBar, r.cur) + 1, true);
-    else seekBar(r.startBar);
+    else {
+      // Double-tap a bar number = select every chord in that bar.
+      const now = Date.now();
+      if (lastRulerTap.current.bar === r.startBar && now - lastRulerTap.current.at < 380) selectBar(r.startBar);
+      else seekBar(r.startBar);
+      lastRulerTap.current = { bar: r.startBar, at: now };
+    }
   };
 
   const loop = loopPreview ? { on: true, start: loopPreview[0], end: loopPreview[1] } : m.loop;
@@ -266,6 +284,7 @@ export function Timeline() {
                       </>
                     ) : <span class="c-cont">⋯</span>}
                     {it.b && <span class={`ab ${sd === 'B' ? 'b' : ''}`}>{sd === 'B' ? 'B' : 'A/B'}</span>}
+                    {ties.has(it.id) && it.t + it.len <= rowStart + rowTicks && <span class="tie" title="次の同じコードとタイでつながってる（鳴らし直さない）" aria-label="タイ" />}
                     {s.pat && !cont && <span class="pat-mark" title={'このコードだけ: ' + patternName(s.pat)}>♪</span>}
                   </div>
                 );
@@ -303,6 +322,13 @@ export function Timeline() {
             );
           })()}
         </div>
+        <label class="zoom" title="1行に並べる小節数">
+          <span>表示</span>
+          <select value={String(zoom)} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; updateSettings({ zoom: v === 'auto' ? 'auto' : (Number(v) as 1 | 2 | 4 | 8) }); }} aria-label="1行の小節数">
+            <option value="auto">自動（{bpr}小節/行）</option>
+            {[1, 2, 4, 8].map((n) => <option value={String(n)}>{n}小節/行</option>)}
+          </select>
+        </label>
         <div class="seg small label-toggle" role="radiogroup" aria-label="表示">
           <button type="button" class={label === 'roman' ? 'on' : ''} aria-checked={label === 'roman'} role="radio" onClick={() => updateSettings({ label: 'roman' })}>度数</button>
           <button type="button" class={label === 'name' ? 'on' : ''} aria-checked={label === 'name'} role="radio" onClick={() => updateSettings({ label: 'name' })}>コード名</button>

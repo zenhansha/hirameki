@@ -9,6 +9,7 @@ import { shareUrl } from '../../io/share';
 import { midiSupported, midiInputs, midiStatus, enableMidi, disableMidi, midiLearn, midiLast } from '../../io/webmidi';
 import { COMMANDS, COMMAND_MAP, keysFor, setKeyLearn } from '../commands';
 import { Btn, Card, Seg, Slider, Toggle } from './common';
+import { openTemplates } from './TemplateGallery';
 import { flushSave, persisted } from '../state';
 
 function Tags() {
@@ -170,7 +171,8 @@ export function MemoPanel() {
       <KeysCard />
       <Card title="メモの管理">
         <div class="row wrap">
-          <Btn icon="plus" onClick={() => newMemo()}>新しいメモ</Btn>
+          <Btn icon="plus" onClick={() => newMemo()}>空のメモ</Btn>
+          <Btn icon="wand" onClick={openTemplates}>テンプレートから作成</Btn>
           <Btn icon="list" onClick={async () => { await flushSave(); view.value = 'list'; }}>メモ一覧</Btn>
           <Btn kind="danger" icon="trash" disabled={!persisted.value} onClick={async () => {
             if (!(await confirmDialog('このメモを削除しますか？', `「${m.title || '無題のメモ'}」を削除します。一覧の「元に戻す」で復元できるのは直後だけです。`, '削除する', true))) return;

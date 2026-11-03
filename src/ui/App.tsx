@@ -2,7 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { narrow, sideTab, tab, view, Tab } from './state';
 import { TopBar, Transport } from './components/Transport';
 import { Timeline } from './components/Timeline';
-import { ChordPad, EditBar } from './components/ChordPad';
+import { ChordPad } from './components/ChordPad';
+import { EditBar } from './components/EditBar';
 import { PatternPanel } from './components/PatternPanel';
 import { SoundPanel } from './components/SoundPanel';
 import { FxPanel } from './components/FxPanel';
@@ -11,6 +12,7 @@ import { ListScreen } from './components/ListScreen';
 import { AudioErrorBanner, DialogHost, HelpOverlay, Toasts, Welcome } from './components/Overlays';
 import { Icon } from './components/common';
 import { VoicingView } from './components/VoicingView';
+import { TemplateGallery } from './components/TemplateGallery';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'input', label: 'コード', icon: 'piano' },
@@ -92,6 +94,7 @@ export function App() {
       <Toasts />
       <DialogHost />
       <Welcome />
+      <TemplateGallery />
       {help && <HelpOverlay onClose={() => setHelp(false)} />}
     </div>
   );

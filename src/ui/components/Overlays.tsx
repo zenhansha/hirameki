@@ -5,6 +5,7 @@ import { audio } from '../../audio/host';
 import { COMMANDS, keysFor } from '../commands';
 import { play } from '../actions';
 import { Btn } from './common';
+import { openTemplates } from './TemplateGallery';
 
 export function Toasts() {
   return (
@@ -65,9 +66,10 @@ export function Welcome() {
           <li>🎛 <b>音色</b>はVital風シンセで作り込める。<b>エフェクト</b>は好きなだけ重ね掛け</li>
           <li>💾 自動保存。<b>URL共有</b>や<b>MIDI/WAV書き出し</b>でDAWへ</li>
         </ul>
-        <p class="hint">サンプル（王道進行 × ドリーミーパッド）を開いておいたよ。まずは聴いてみて！</p>
+        <p class="hint">テンプレート「王道進行 × ドリーミーパッド」を開いておいたよ。まずは聴いてみて！ ほかの進行は ＋ →「テンプレートから作成」から。</p>
         <div class="modal-actions">
           <Btn class="txt" onClick={() => go(false)}>あとで</Btn>
+          <Btn class="txt" onClick={() => { go(false); openTemplates(); }}>テンプレートを見る</Btn>
           <Btn kind="primary" icon="play" onClick={() => go(true)}>再生してみる</Btn>
         </div>
       </div>

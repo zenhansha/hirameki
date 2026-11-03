@@ -1,5 +1,6 @@
 // Top bar (logo, title, memo list/new/share) and the transport (play, tempo, key, meter, A/B …).
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { openTemplates } from './TemplateGallery';
 import { memo, playing, side, hasB, saveState, view, flushSave, audioState, persisted, settings, updateSettings, narrow } from '../state';
 import { Btn, Icon } from './common';
 import { play, setBpm, setKey, setTimeSig, stop, tapTempo, toStart, transpose, updateMemo, newMemo } from '../actions';
@@ -8,6 +9,29 @@ import { TIME_SIGS, tsLabel } from '../../seq/time';
 import { displayTitle } from '../../store/schema';
 import { shareMemo } from '../exporting';
 import { audio } from '../../audio/host';
+
+/** ＋: a blank memo, or start from a template. */
+function NewMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', close, true);
+    return () => document.removeEventListener('pointerdown', close, true);
+  }, [open]);
+  return (
+    <div class="new-menu" ref={ref}>
+      <Btn icon="plus" label="新しいメモ" active={open} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} />
+      {open && (
+        <div class="menu down" role="menu">
+          <button type="button" role="menuitem" onClick={() => { setOpen(false); newMemo(); }}><span class="ml">空のメモ</span><kbd>Alt+N</kbd></button>
+          <button type="button" role="menuitem" onClick={() => { setOpen(false); openTemplates(); }}><span class="ml">テンプレートから作成…</span><kbd>Alt+T</kbd></button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function TopBar() {
   const m = memo.value;
@@ -32,7 +56,7 @@ export function TopBar() {
       <span class={`save ${ss}`} title={ss === 'saved' ? '保存済み' : ss === 'error' ? '保存エラー' : '保存中'}>{ss === 'saved' ? (persisted.value ? '✓' : '') : ss === 'error' ? '⚠' : '●'}</span>
       <div class="tb-right">
         <Btn icon="list" label="メモ一覧" class={view.value === 'list' ? 'on' : ''} onClick={async () => { await flushSave(); view.value = view.value === 'list' ? 'editor' : 'list'; }} />
-        <Btn icon="plus" label="新しいメモ" onClick={() => newMemo()} />
+        <NewMenu />
         {view.value === 'editor' && <Btn icon="share" label="URLで共有" onClick={() => shareMemo(memo.value)} />}
       </div>
     </header>

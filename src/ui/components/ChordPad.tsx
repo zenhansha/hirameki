@@ -2,18 +2,14 @@
 // any-root grid, modifier chips, next-chord suggestions and the edit bar.
 import { useComputed } from '@preact/signals';
 import { useState } from 'preact/hooks';
-import { inputMode, memo, selection, settings, updateSettings, side, caret, canUndo, canRedo, undo, redo, lastInserted, narrow } from '../state';
+import { inputMode, memo, selection, settings, updateSettings, side, caret, lastInserted } from '../state';
 import { ChordSpec, chordFunction, chordName, romanName, chordToneNames } from '../../theory/chord';
 import { activeModifiers, chordOnOffset, diatonicChord, nonDiatonicPalette, ModifierId } from '../../theory/diatonic';
 import { suggestNext } from '../../theory/suggest';
 import { pcName } from '../../theory/core';
 import { findItem, sideOf, sortItems } from '../../seq/timeline';
-import { lengthChoices, posLabel } from '../../seq/time';
-import {
-  applyMod, applySlash, applyTension, auditionChord, deleteSelection, duplicateSelection, inputChord, inputLength, loopSelection,
-  makeB, moveSelection, removeB, resizeSelection, splitSelection, stepSelection, targetItem,
-} from '../actions';
-import { Btn, Icon, Seg } from './common';
+import { applyMod, applySlash, applyTension, auditionChord, inputChord, targetItem } from '../actions';
+import { Icon, Seg } from './common';
 import { Piano } from './Piano';
 import { Hum } from './Hum';
 
@@ -114,91 +110,6 @@ function Suggestions() {
             <span>{romanName(s.chord, k, style)}</span>
             <small>{s.progression ? `→ ${s.progression}` : s.reason}</small>
           </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function EditBar() {
-  const m = memo.value;
-  const sel = selection.value;
-  const it = sel.length ? findItem(m.chords, sel[0]) : undefined;
-  const choices = lengthChoices(m.ts);
-  const curLen = it ? it.len : inputLength(m);
-  const target = targetItem();
-  const setLen = (t: number) => (it ? resizeSelection(t) : updateSettings({ inputLen: t }));
-  if (narrow.value) {
-    // Phones: one scrollable row, most used first (length as a compact picker).
-    return (
-      <div class="editbar compact">
-        <Btn icon="undo" label="元に戻す" disabled={!canUndo.value} onClick={undo} />
-        <Btn icon="redo" label="やり直す" disabled={!canRedo.value} onClick={redo} />
-        <label class="len-pick" title={it ? '選択中のコードの長さ' : '次に入れるコードの長さ'}>
-          <span>{it ? '長さ' : '入力'}</span>
-          <select value={String(curLen)} onChange={(e) => setLen(Number((e.target as HTMLSelectElement).value))} aria-label={it ? '長さ' : '入力の長さ'}>
-            {choices.map((c) => <option value={String(c.ticks)}>{c.label}</option>)}
-            {!choices.some((c) => c.ticks === curLen) && <option value={String(curLen)}>{posLabel(curLen, m.ts)}</option>}
-          </select>
-        </label>
-        <Btn icon="left" label="前のコード" onClick={() => stepSelection(-1)} />
-        <Btn icon="right" label="次のコード" onClick={() => stepSelection(1)} />
-        {sel.length > 0 ? (
-          <>
-            <Btn icon="trash" label="削除" kind="danger" onClick={deleteSelection} />
-            <Btn icon="copy" label="複製" onClick={duplicateSelection} />
-            <Btn icon="split" label="分割" onClick={splitSelection} disabled={sel.length !== 1} />
-            <Btn label="左と入れ替え" onClick={() => moveSelection(-1)} disabled={sel.length !== 1} class="txt swap">⇠入替</Btn>
-            <Btn label="右と入れ替え" onClick={() => moveSelection(1)} disabled={sel.length !== 1} class="txt swap">入替⇢</Btn>
-            <Btn icon="loop" label="選択範囲をループ" onClick={loopSelection} />
-          </>
-        ) : <Btn label="直前のコードを削除" onClick={deleteSelection} class="txt">⌫</Btn>}
-        {target && (!target.b ? <Btn class="txt" label="B案を作る" onClick={makeB}>＋B案</Btn> : (
-          <>
-            <Btn class="txt" label="B案を採用" onClick={() => removeB(true)}>Bを採用</Btn>
-            <Btn class="txt" label="B案を消す" onClick={() => removeB(false)}>B案削除</Btn>
-          </>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <div class={`editbar ${sel.length ? 'has-sel' : ''}`}>
-      <div class="eb-group eb-main">
-        <Btn icon="undo" label="元に戻す (Ctrl+Z)" disabled={!canUndo.value} onClick={undo} />
-        <Btn icon="redo" label="やり直す (Ctrl+Y)" disabled={!canRedo.value} onClick={redo} />
-        <span class="eb-sep" />
-        <Btn icon="left" label="前のコード (←)" onClick={() => stepSelection(-1)} />
-        <Btn icon="right" label="次のコード (→)" onClick={() => stepSelection(1)} />
-        {sel.length > 0 ? (
-          <>
-            <span class="eb-sep" />
-            <Btn icon="copy" label="複製 (Ctrl+D)" onClick={duplicateSelection} />
-            <Btn icon="split" label="分割" onClick={splitSelection} disabled={sel.length !== 1} />
-            <Btn label="左と入れ替え (Shift+←)" onClick={() => moveSelection(-1)} disabled={sel.length !== 1} class="txt swap">⇠入替</Btn>
-            <Btn label="右と入れ替え (Shift+→)" onClick={() => moveSelection(1)} disabled={sel.length !== 1} class="txt swap">入替⇢</Btn>
-            <Btn icon="loop" label="選択範囲をループ" onClick={loopSelection} />
-            <Btn icon="trash" label="削除 (Delete)" kind="danger" onClick={deleteSelection} />
-          </>
-        ) : (
-          <>
-            <span class="pos">位置 {posLabel(caret.value, m.ts)}</span>
-            <Btn label="直前のコードを削除 (Backspace)" onClick={deleteSelection} class="txt">⌫</Btn>
-          </>
-        )}
-        {target && (!target.b ? (
-          <Btn class="txt" label="このコードのB案を作って聴き比べる" onClick={makeB}>＋B案</Btn>
-        ) : (
-          <>
-            <Btn class="txt" label="B案を採用（Aに上書き）" onClick={() => removeB(true)}>Bを採用</Btn>
-            <Btn class="txt" label="B案を消す" onClick={() => removeB(false)}>B案削除</Btn>
-          </>
-        ))}
-      </div>
-      <div class="eb-group len" role="group" aria-label="長さ">
-        <span class="mini-label">{it ? '長さ' : '入力の長さ'}</span>
-        {choices.map((c) => (
-          <button type="button" class={`chip ${c.ticks === curLen ? 'on' : ''}`} onClick={() => setLen(c.ticks)}>{c.label}</button>
         ))}
       </div>
     </div>

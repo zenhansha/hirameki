@@ -202,7 +202,8 @@ export function loadMemoIntoEditor(m: Memo, isPersisted: boolean) {
     persisted.value = isPersisted;
     selection.value = [];
     lastInserted.value = null;
-    caret.value = 0;
+    // Caret after the last chord: suggestions continue the progression and new chords append.
+    caret.value = m.chords.reduce((e, c) => Math.max(e, c.t + c.len), 0);
     side.value = 'A';
     saveState.value = 'saved';
   });

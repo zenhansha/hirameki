@@ -11,6 +11,7 @@ import { audio } from '../../audio/host';
 import { newMemo, openMemo } from '../actions';
 import { exportJson, importJsonFile, shareMemo } from '../exporting';
 import { Btn, Icon } from './common';
+import { openTemplates } from './TemplateGallery';
 
 function preview(m: Memo): string {
   const cs = sortItems(m.chords).slice(0, 8).map((c) => chordName(c.chord, m.key));
@@ -78,7 +79,8 @@ export function ListScreen() {
       <div class="ls-head">
         <h2>メモ一覧 <small>{memos.length}件</small></h2>
         <div class="ls-actions">
-          <Btn kind="primary" icon="plus" onClick={() => newMemo()}>新しいメモ</Btn>
+          <Btn kind="primary" icon="plus" onClick={() => newMemo()}>空のメモ</Btn>
+          <Btn icon="wand" onClick={openTemplates}>テンプレートから作成</Btn>
           <Btn icon="upload" onClick={async () => { if (await importJsonFile()) reload(); }}>JSONを読み込む</Btn>
           <Btn icon="download" disabled={!memos.length} onClick={() => exportJson(memos)}>全部書き出す</Btn>
         </div>
@@ -130,7 +132,7 @@ export function ListScreen() {
       </div>
       {loaded && !shown.length && (
         <div class="ls-empty">
-          {memos.length ? '条件に合うメモがないよ' : 'まだメモがないよ。ひらめいたら「新しいメモ」から！'}
+          {memos.length ? '条件に合うメモがないよ' : <>まだメモがないよ。ひらめいたら「空のメモ」から、迷ったら<button type="button" class="linkbtn" onClick={openTemplates}>テンプレート</button>から！</>}
         </div>
       )}
       <div class="ls-foot"><Btn class="txt" onClick={() => (view.value = 'editor')}>← エディタに戻る</Btn></div>
