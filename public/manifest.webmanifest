@@ -1,0 +1,18 @@
+{
+  "name": "HIRAMEKI 即興コードメモ",
+  "short_name": "HIRAMEKI",
+  "description": "ひらめいたコード進行をその場でメモしてすぐ鳴らせる、シンセ内蔵のコード進行メモ",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0e0f14",
+  "theme_color": "#0e0f14",
+  "categories": ["music", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
