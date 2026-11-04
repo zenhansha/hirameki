@@ -31,6 +31,8 @@ export const midiHeld = signal<number[]>([]);
 export const patternScope = signal<'all' | 'sel'>('all');
 export const narrow = signal(typeof window !== 'undefined' ? window.innerWidth < 1024 : false);
 export const persisted = signal(false);
+/** Storage has answered and the first memo is in place (the claude.ai store takes a moment). */
+export const booted = signal(false);
 
 // Slices: components that read these only re-render when that part changes.
 export const chords = computed(() => memo.value.chords);

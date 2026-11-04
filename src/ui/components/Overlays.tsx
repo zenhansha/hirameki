@@ -1,6 +1,6 @@
 // Toasts, dialogs, welcome and help overlays.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { dialog, toasts, settings, updateSettings, audioState } from '../state';
+import { booted, dialog, toasts, settings, updateSettings, audioState } from '../state';
 import { audio } from '../../audio/host';
 import { COMMANDS, keysFor } from '../commands';
 import { play } from '../actions';
@@ -50,7 +50,7 @@ export function DialogHost() {
 }
 
 export function Welcome() {
-  if (settings.value.welcomed) return null;
+  if (settings.value.welcomed || !booted.value) return null;
   const go = async (playNow: boolean) => {
     updateSettings({ welcomed: true });
     if (playNow) { await audio.start(); play(true); }

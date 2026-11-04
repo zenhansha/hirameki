@@ -4,7 +4,7 @@ import { App } from './ui/App';
 import { audio } from './audio/host';
 import { installKeyboard } from './ui/commands';
 import {
-  flushSave, loadMemoIntoEditor, settings, startAudioSync, toast, updateSettings, memo, persisted,
+  booted, flushSave, loadMemoIntoEditor, settings, startAudioSync, toast, updateSettings, memo, persisted,
 } from './ui/state';
 import { loadSettings, listMemos, saveMemo, kvGet, kvSet, purgeDeleted } from './store/repo';
 import { getBackend } from './store/db';
@@ -16,6 +16,9 @@ import { openMemo } from './ui/actions';
 import { IS_ARTIFACT } from './platform';
 
 async function boot() {
+  // Whatever the user enters while storage is still answering must survive the first load.
+  const initial = memo.value;
+  const untouched = () => memo.value === initial;
   audio.installUnlock();
   installKeyboard();
   startAudioSync();
@@ -36,7 +39,7 @@ async function boot() {
 
   // v1.0 stored the samples as memos. Templates now live in the "テンプレートから作成" menu,
   // so remove the sample memos the user never touched (edited ones are the user's now).
-  if (!(await kvGet<boolean>('templatesV2'))) {
+  if (!(await kvGet<boolean>('templatesV2').catch(() => true))) {
     try {
       for (const m of await listMemos()) if (m.sample && m.rev === 0) await backend.del('memos', m.id);
       await kvSet('templatesV2', true);
@@ -57,11 +60,11 @@ async function boot() {
     history.replaceState(null, '', location.pathname + location.search);
   } else if (!settings.value.welcomed) {
     // First launch: a template is open (not saved unless edited) so ▶ immediately sounds good.
-    loadMemoIntoEditor(memoFromTemplate('oudou-dreamy'), false);
+    if (untouched()) loadMemoIntoEditor(memoFromTemplate('oudou-dreamy'), false);
   } else {
     // Ready for a new idea right away; the last memo is one tap away in the list.
-    loadMemoIntoEditor(defaultMemo(), false);
-    const last = await kvGet<string>('lastMemo');
+    if (untouched()) loadMemoIntoEditor(defaultMemo(), false);
+    const last = await kvGet<string>('lastMemo').catch(() => undefined);
     if (last) {
       const all = await listMemos().catch(() => []);
       const lm = all.find((x) => x.id === last);
@@ -107,4 +110,4 @@ function reportError(e: unknown) {
 }
 
 render(<App />, document.getElementById('app')!);
-boot();
+boot().finally(() => { booted.value = true; });
